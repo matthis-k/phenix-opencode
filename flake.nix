@@ -7,14 +7,18 @@
     nixpkgs.follows = "phenix-pins/nixpkgs";
     nix-wrapper-modules.url = "github:BirdeeHub/nix-wrapper-modules";
     nix-wrapper-modules.inputs.nixpkgs.follows = "phenix-pins/nixpkgs";
-    phenix-tools.url = "../phenix-tools";
+    phenix-tools.url = "github:matthis-k/phenix-tools";
     phenix-tools.inputs.phenix-pins.follows = "phenix-pins";
-    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-unstable.follows = "phenix-pins/nixpkgs-unstable";
   };
 
-  outputs = inputs@{ flake-parts, ... }:
+  outputs =
+    inputs@{ flake-parts, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
-      systems = [ "x86_64-linux" "aarch64-linux" ];
+      systems = [
+        "x86_64-linux"
+        "aarch64-linux"
+      ];
       imports = [ ./modules/standalone.nix ];
       flake.flakeModules.default = import ./modules/flake-module.nix;
     };
