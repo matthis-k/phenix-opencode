@@ -1,5 +1,5 @@
 {
-  description = "Wrapped opencode with Phenix MCP configuration";
+  description = "Wrapped opencode with Phenix MCP and workflow configuration";
 
   inputs = {
     flake-parts.url = "github:hercules-ci/flake-parts";
@@ -9,6 +9,7 @@
     nix-wrapper-modules.inputs.nixpkgs.follows = "phenix-pins/nixpkgs";
     phenix-tools.url = "../phenix-tools";
     phenix-tools.inputs.phenix-pins.follows = "phenix-pins";
+    nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs = inputs@{ flake-parts, ... }:
