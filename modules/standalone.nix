@@ -365,12 +365,14 @@
       };
     in
     {
-      packages.default = wrappedOpencode;
-      packages.opencode = wrappedOpencode;
-      packages.pi = wrappedPi;
-      packages.generated-config = generatedConfig;
-      packages.generated-pi-settings = generatedPiSettings;
-      packages.generated-pi-package-json = generatedPiPackageJson;
+      packages = {
+        default = wrappedOpencode;
+        opencode = wrappedOpencode;
+        pi = wrappedPi;
+        generated-config = generatedConfig;
+        generated-pi-settings = generatedPiSettings;
+        generated-pi-package-json = generatedPiPackageJson;
+      };
 
       checks.generated-config =
         pkgs.runCommand "phenix-opencode-generated-config-check"
