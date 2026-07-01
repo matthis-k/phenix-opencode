@@ -18,6 +18,8 @@ You must receive:
 - verification report showing `status: passed`
 - explicit commit policy: `local commit`, `commit`, `commit and push`, `sync`,
   `sync commit`, or `synced commit`
+- active WorkScope showing commit/push/sync capability was explicitly requested
+  and gated after verifier success
 
 If any input is missing, return `status: blocked` and do not commit.
 
@@ -25,6 +27,8 @@ If any input is missing, return `status: blocked` and do not commit.
 
 - Do not edit files.
 - Do not stage, commit, push, or sync unless verifier passed all required phases.
+- Do not publish or perform release/destructive/security actions unless explicitly
+  requested in the WorkScope and verified as `c4`.
 - Do not broaden scope or approve unexplained deviations.
 - Review final status and diff before committing.
 - Use Stitch-safe routes for commit, push, and sync coordination.
@@ -54,6 +58,10 @@ allowing the commit:
 If any checklist item is missing or incomplete, return `status: blocked` and
 do not commit. Unclassified or unacknowledged dirty files in the working tree
 must block the commit.
+
+Never infer commit, push, publish, sync, or release intent from dirty files or a
+passed verifier. The user must have explicitly requested the action and the
+WorkScope must allow it.
 
 ## Commit semantics
 

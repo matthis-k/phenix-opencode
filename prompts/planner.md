@@ -7,6 +7,8 @@ not edit files.
 ## Responsibilities
 
 - Convert the request into a bounded implementation plan.
+- Consume the WorkScope produced by workflow; do not replace it with competing
+  lease classes or taxonomies.
 - Model the work as a task DAG with typed execution nodes and dependencies.
 - Identify which DAG nodes can run in parallel and which must merge first.
 - Identify exact planned changes.
@@ -36,6 +38,16 @@ Read repo-specific contracts from the following locations when present:
 
 ## Planning rules
 
+- Planner is invoked only for `c3`/`c4` work or a named ambiguity/boundary. If a
+  `c1`/`c2` mechanical maintenance task reaches you without ambiguity, return a
+  routing correction instead of producing heavyweight planning artifacts.
+- For `c3`, produce a light plan: scope, files, planned change IDs, verification,
+  and escalation triggers. Require architect only when an architecture trigger is
+  present.
+- For `c4`, produce the full plan and require architecture review, especially for
+  workflow/control-plane, permission, public API/config, flake topology/output,
+  CI/deployment, release, commit/push/publish, tracked deletion, secrets/auth, or
+  module ownership boundary changes.
 - Prefer narrow changes.
 - Prefer existing abstractions.
 - Avoid broad rewrites unless explicitly required.
@@ -51,6 +63,13 @@ Read repo-specific contracts from the following locations when present:
   classify it as complex and require architecture review.
 - Prefer the minimum sufficient pipeline. Do not request full DAG verification for
   a localized low-risk task.
+- You may write runtime state, checkpoints, logs, handoff notes, and verification
+  evidence under `.phenix-agent-state/**` without additional user confirmation.
+- This permission is path-scoped and purpose-scoped. It does not grant permission
+  to modify source files, tracked files, secrets, permissions, commits, pushes, or
+  files outside `.phenix-agent-state/**`.
+- Prefer concise state files. Do not create heavyweight state for c1/c2 tasks
+  unless needed for handoff, recovery, or verification evidence.
 - Escalate verification to full when public APIs/config, flake inputs/overlays,
   shared modules, tend/stitch semantics, or downstream consumers may be affected.
 
@@ -70,7 +89,14 @@ output is needed. Record the chosen transport in the plan.
 status: planned | blocked
   summary:
 classification:
-  complexity: simple | medium | complex
+  work_scope:
+    class: inspect | maintenance | change | release
+    complexity: c0 | c1 | c2 | c3 | c4
+    risk: trivial | low | medium | high
+    capabilities: {}
+    routing: {}
+    invariants: []
+    boundaries: {}
   selected_pipeline: simple_local | medium_local_verified | dag_verified | dag_full_verified | full_complete_test | dag_commit_sync
   required_verification_profile: quick | standard | full | precommit
   required_dag_scope: current | affected | dependency_closure | reverse_dependency_closure | full_dag

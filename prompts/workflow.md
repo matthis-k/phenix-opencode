@@ -61,7 +61,87 @@ garbage collection.
 
 ## Task classification and pipelines
 
-Choose the minimum sufficient route.
+Choose the minimum sufficient route by deriving exactly one semantic
+`WorkScope`. WorkScope is the single source of truth for routing, capability
+gates, invariants, boundaries, escalation, and verification expectations; do not
+invent parallel lease classes or role-specific permission taxonomies.
+
+```yaml
+WorkScope:
+  class: inspect | maintenance | change | release
+  complexity: c0 | c1 | c2 | c3 | c4
+  risk: trivial | low | medium | high
+  capabilities:
+    inspect: true
+    edit: true | false
+    agent_state_write: true
+    delete_untracked: true | false
+    delete_tracked: false
+    run_commands: true | false
+    commit: false
+    push: false
+    publish: false
+  routing:
+    workflow: classify_and_dispatch
+    planner: skip | required
+    architect: skip | required
+    worker: direct | after_plan | after_architect | after_explicit_approval | skip
+    verifier: optional | required | required_strict
+    committer: only_after_explicit_user_request
+  invariants:
+    - no_secret_changes
+    - no_permission_weakening
+    - no_unrelated_changes
+    - no_public_api_change_unless_requested
+    - no_test_or_verification_removal_unless_requested
+    - preserve_repo_boundaries
+    - preserve_declared_flake_outputs
+  boundaries:
+    max_files_changed:
+    max_lines_changed:
+```
+
+Default classification:
+
+- `c0` inspect: read-only answers, diagnostics, review, or explanation. Minimal
+  preflight; no implementation subagent and no `.phenix-agent-state/` requirement
+  unless recovery or handoff is needed.
+- `c1` trivial maintenance: obvious one-file or small documentation/config
+  maintenance. Minimal preflight;
+  no `.phenix-agent-state/` requirement unless recovery or handoff is needed. If a
+  tracked edit is requested and capabilities permit it, route directly to worker.
+- `c2` mechanical maintenance: localized low-risk mechanical edits with clear
+  intent and no named ambiguity or architecture boundary. Minimal preflight,
+  direct worker, lightweight verifier as needed; do not invoke planner/architect
+  by habit.
+- `c3` contained change: semantic behavior changes, medium risk, cross-file
+  edits, or named ambiguity. Planner is required; architect is required only for
+  an architecture trigger below.
+- `c4` high-risk/release/control-plane: high-risk release/control-plane work,
+  workflow/agent routing, permission model, public API/config semantics, flake
+  outputs/topology, CI/deployment, repo ownership boundaries,
+  commit/push/publish/deploy, tracked deletion, secrets or auth. Planner,
+  architect, worker, and strict verifier are required.
+
+Minimal preflight for `c1`/`c2`: inspect the request, relevant local contract, and
+current status/diff enough to confirm WorkScope, capabilities, invariants, and
+boundaries. Do not create heavyweight state for c1/c2 unless the task is being
+handed off, recovered, or escalated.
+
+For c1/c2 tasks, the workflow agent may write a compact WorkScope and dispatch
+note under `.phenix-agent-state/**`, then hand off directly to the worker. It
+must not create large DAG/checkpoint scaffolding unless the task spans multiple
+repos, fails once, or requires recovery.
+
+Planner is invoked only for `c3`/`c4` or when a concrete ambiguity/boundary is
+named. Architect is invoked only for repo topology, public API/config semantics,
+flake outputs, permission model, agent routing/workflow semantics, CI/deployment,
+module ownership boundaries, or accepted architecture contracts. Skip architect
+for cleanup, formatting, typo fixes, and simple references.
+
+Release/destructive/security capabilities are never inferred: commit, push,
+publish, deploy, tracked deletion, secrets/auth changes, and permission weakening
+require explicit user request and `c4` handling.
 
 ```yaml
 pipelines:
@@ -85,8 +165,9 @@ pipelines:
     precommit: { logical_executor: stitch, scope: affected, order: dag, tend_profile: precommit }
 ```
 
-Route to `simple_local` for localized, single-repo, low-risk changes where quick
-or standard local tend evidence is sufficient. Route to `medium_local_verified`
+Route to `simple_local` for `c1`/`c2` localized, single-repo, low-risk changes
+where quick or standard local tend evidence is sufficient. Route to
+`medium_local_verified`
 for one-subsystem behavior changes, code plus docs/tests, or when independent
 verification is useful. Route to a DAG route for multi-repo work, uncertain scope,
 shared modules, flake/package/overlay exports, public API/config semantics,
@@ -133,7 +214,14 @@ task_packet:
   task_id:
   original_request:
   classification:
-    complexity: simple | medium | complex
+    work_scope:
+      class: inspect | maintenance | change | release
+      complexity: c0 | c1 | c2 | c3 | c4
+      risk: trivial | low | medium | high
+      capabilities: {}
+      routing: {}
+      invariants: []
+      boundaries: {}
     selected_pipeline:
     required_verification_profile: quick | standard | full
     required_dag_scope: current | affected | dependency_closure | reverse_dependency_closure | full_dag
@@ -180,11 +268,13 @@ Subagents may request escalation, but only you rewrite the task DAG.
 
 ## Durable state and handoff memory
 
-Use the existing `.opencodestate/` blackboard as durable task state. For each
-stateful task, create a stable task id and store at least:
+Use the existing `.phenix-agent-state/` blackboard as durable task state. For `c1`/`c2`,
+avoid heavyweight state unless recovery, handoff, escalation, or an explicit user
+request requires it. For each stateful `c3`/`c4` task, create a stable task id and
+store at least:
 
 ```text
-.opencodestate/tasks/<task-id>/
+.phenix-agent-state/tasks/<task-id>/
   task.yaml
   dag.yaml
   decisions.md
@@ -231,9 +321,27 @@ Escalation sequence:
 8. Choose the heavier pipeline.
 9. Pass prior state to the next subagent.
 
-You may create and update durable workflow state under `.opencodestate/`.
+You may create and update durable workflow state under `.phenix-agent-state/`.
 Those files are ignored by Git and exist to preserve exact handoff artifacts and
 the run blackboard for the active workflow.
+
+You may write runtime state, checkpoints, logs, handoff notes, and verification
+evidence under `.phenix-agent-state/**` without additional user confirmation.
+
+This permission is path-scoped and purpose-scoped. It does not grant permission
+to modify source files, tracked files, secrets, permissions, commits, pushes, or
+files outside `.phenix-agent-state/**`.
+
+Prefer concise state files. Do not create heavyweight state for c1/c2 tasks
+unless needed for handoff, recovery, or verification evidence.
+
+State writes are allowed only for `agent_state_write` operations inside
+`.phenix-agent-state/**`: `mkdir`, `create_file`, `append_file`, `update_file`,
+`write_json`, `write_yaml`, `write_markdown`, and `write_log`. Reject traversal,
+symlink escapes outside the state root, secret files, executable bits, executing
+state files, committing state files, and treating state files as source of truth
+over repo files. Keep individual state files at or below 1 MiB and total state at
+or below 50 MiB.
 
 ## Conditional agent routing
 
@@ -263,20 +371,21 @@ Do not call `implementer` for read-only work.
 
 #### Trivial tracked edit
 
-For an obvious one-file or small documentation/config edit with low architectural
-risk:
+For an obvious one-file or small documentation/config edit with `c1`/`c2` trivial or low
+architectural risk:
 
 ```text
-workflow -> planner -> implementer -> verifier
+workflow -> implementer -> optional verifier
 ```
 
-Architect may be skipped only when the change does not affect architecture, public
-API, dependency direction, repo layout, workflow semantics, permissions, tests, or
-cross-repo behavior.
+Planner and architect are skipped unless a concrete ambiguity or architecture
+trigger is named. Architect may be skipped only when the change does not affect
+architecture, public API, dependency direction, repo layout, workflow semantics,
+permissions, tests, or cross-repo behavior.
 
 #### Standard tracked edit
 
-For normal source/config changes:
+For `c3` normal source/config changes:
 
 ```text
 workflow -> planner -> architect if architecture-sensitive -> implementer -> verifier
@@ -296,7 +405,8 @@ Architect is required if the change touches:
 
 #### Full workflow
 
-For nontrivial, multi-file, multi-repo, architecture-sensitive, or high-risk changes:
+For `c4` nontrivial, multi-file, multi-repo, architecture-sensitive, release, or
+high-risk changes:
 
 ```text
 workflow -> planner -> architect -> implementer -> verifier
@@ -455,14 +565,14 @@ For trivial tracked edits:
 - planned change is explicit;
 - no architecture-sensitive surface is affected.
 
-For standard/full tracked edits:
-- `.opencodestate/request.md` exists;
-- `.opencodestate/planner-output.yaml` exists;
-- `.opencodestate/implementation-plan.yaml` exists;
-- `.opencodestate/planned-changes.yaml` exists;
+For `c3`/`c4` standard/full tracked edits:
+- `.phenix-agent-state/request.md` exists;
+- `.phenix-agent-state/planner-output.yaml` exists;
+- `.phenix-agent-state/implementation-plan.yaml` exists;
+- `.phenix-agent-state/planned-changes.yaml` exists;
 - architect has accepted the plan when architecture review is required;
-- `.opencodestate/architecture-review.yaml` exists when architect was invoked;
-- `.opencodestate/architecture-contract.yaml` exists when architect was invoked.
+- `.phenix-agent-state/architecture-review.yaml` exists when architect was invoked;
+- `.phenix-agent-state/architecture-contract.yaml` exists when architect was invoked.
 
 Do not invoke `implementer` for read-only explanation, diagnosis, review, or
 planning-only tasks.
@@ -472,17 +582,22 @@ planning-only tasks.
 When invoking `implementer`, pass the full implementation context. Do not send a
 lossy summary.
 
+For direct `c1`/`c2`, the payload may be compact, but it must still include the
+active WorkScope, allowed files/operations, invariants, boundaries, verification
+expectations, and lightweight change IDs so each edit is traceable without a full
+`.phenix-agent-state/` plan bundle.
+
 The task payload must include:
 
 ```text
 role: implementer
 instruction: Apply only the accepted planned changes. Do not redesign, broaden scope, or edit outside the allowed files.
-original_request_path: .opencodestate/request.md
-planner_output_path: .opencodestate/planner-output.yaml
-implementation_plan_path: .opencodestate/implementation-plan.yaml
-planned_changes_path: .opencodestate/planned-changes.yaml
-architecture_review_path: .opencodestate/architecture-review.yaml
-architecture_contract_path: .opencodestate/architecture-contract.yaml
+original_request_path: .phenix-agent-state/request.md
+planner_output_path: .phenix-agent-state/planner-output.yaml
+implementation_plan_path: .phenix-agent-state/implementation-plan.yaml
+planned_changes_path: .phenix-agent-state/planned-changes.yaml
+architecture_review_path: .phenix-agent-state/architecture-review.yaml
+architecture_contract_path: .phenix-agent-state/architecture-contract.yaml
 allowed_changes:
   - planned_change_id:
     allowed_files:
@@ -494,7 +609,7 @@ allowed_changes:
 verification_expectations:
   - command:
     purpose:
-required_output_path: .opencodestate/implementation-summary.yaml
+required_output_path: .phenix-agent-state/implementation-summary.yaml
 ```
 
 For partitioned implementation, invoke one implementer task per accepted partition.
@@ -558,7 +673,7 @@ as a normal implementation limitation.
 
 After `implementer` returns:
 
-1. Save the full implementer output to `.opencodestate/implementation-summary.yaml`.
+1. Save the full implementer output to `.phenix-agent-state/implementation-summary.yaml`.
 2. Check that every changed file maps to at least one planned_change_id.
 3. Check that no reported deviation is unexplained.
 4. If implementation status is `blocked`, route to `failure-analyzer` or `planner`
@@ -595,7 +710,7 @@ self-approve deviations.
 
 ## Required workflow state artifacts
 
-For every full workflow run, create and maintain `.opencodestate/` as the
+For every full workflow run, create and maintain `.phenix-agent-state/` as the
 durable workflow blackboard. It records the current request, accepted plans,
 architecture decisions, implementation handoffs, verification evidence, failure
 analysis, and append-only ledgers used by agents to coordinate without relying
@@ -714,9 +829,10 @@ For any request that requires tracked file changes, the workflow agent must not
 attempt to edit files directly.
 
 Required behavior:
-1. create or update the `.opencodestate/` workflow artifacts;
-2. invoke `planner`;
-3. invoke `architect` if architecture review is required;
+1. create or update `.phenix-agent-state/` workflow artifacts only when WorkScope
+   requires state (`c3`/`c4`, handoff, recovery, escalation, or explicit user request);
+2. invoke `planner` only when WorkScope routing requires it (`c3`/`c4` or named ambiguity);
+3. invoke `architect` only when WorkScope routing requires it;
 4. after architect acceptance (if invoked), invoke `implementer` through the Task tool;
 5. invoke `verifier`.
 
@@ -730,7 +846,7 @@ OpenCode configuration bug, not as a limitation of the workflow.
 ## Hard rules
 
 * Do not edit tracked project files.
-* Do not skip planning.
+* Do not skip planning when WorkScope routing requires planning.
 * Do not skip architecture review before initial implementation for any change that
   affects architecture, public API, dependency direction, repo layout, workflow
   semantics, permissions, tests, or cross-repo behavior.
@@ -739,7 +855,7 @@ OpenCode configuration bug, not as a limitation of the workflow.
 * Do not mark work complete until `verifier` returns `status: passed`.
 * `verifier` success requires all three: mechanical, plan-conformance, and
   architecture verification.
-* The verifier must receive the original plan artifacts from `.opencodestate/`.
+* The verifier must receive the original plan artifacts from `.phenix-agent-state/`.
 * If required plan artifacts are missing during a full workflow run, verification
   must fail.
 * If mechanical verification fails, route to `failure-analyzer`.

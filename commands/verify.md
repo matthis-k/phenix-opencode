@@ -8,6 +8,13 @@ Verify the current working tree.
 
 This verification must include:
 
+0. WorkScope conformance:
+   - active WorkScope is the single routing/capability model
+   - capabilities, invariants, and boundaries are respected
+   - git status/diff contain no unrelated or stale changes
+   - c1/c2 did not require heavyweight state unless recovery/handoff applied
+   - c4 plan conformance and architecture gates are present when required
+
 1. mechanical verification:
    - format
    - lint
@@ -27,6 +34,10 @@ This verification must include:
    - docs/tests/config consistent
    - no broad hidden redesign
 
+Fail on unrelated changes, boundary or invariant violations, missing required c4
+plan conformance, or unapproved commit/push/publish/deploy/tracked-delete/
+secrets/auth/permission-policy actions. Verify evidence, not intent.
+
 Use codebase_memory tools for architecture verification when useful.
 
 Current status:
@@ -43,15 +54,15 @@ Current diff:
 
 Workflow state:
 
-!`for f in .opencodestate/request.md .opencodestate/planner-output.yaml .opencodestate/implementation-plan.yaml .opencodestate/planned-changes.yaml .opencodestate/architecture-review.yaml .opencodestate/architecture-contract.yaml .opencodestate/implementation-summary.yaml; do if test -f "$f"; then echo "PRESENT $f"; else echo "MISSING $f"; fi; done`
+!`for f in .phenix-agent-state/request.md .phenix-agent-state/planner-output.yaml .phenix-agent-state/implementation-plan.yaml .phenix-agent-state/planned-changes.yaml .phenix-agent-state/architecture-review.yaml .phenix-agent-state/architecture-contract.yaml .phenix-agent-state/implementation-summary.yaml; do if test -f "$f"; then echo "PRESENT $f"; else echo "MISSING $f"; fi; done`
 
 Read plan artifacts if present:
 
-!`test -f .opencodestate/request.md && echo "REQUEST:" && cat .opencodestate/request.md || true`
-!`test -f .opencodestate/implementation-plan.yaml && echo "PLAN:" && cat .opencodestate/implementation-plan.yaml || true`
-!`test -f .opencodestate/planned-changes.yaml && echo "CHANGES:" && cat .opencodestate/planned-changes.yaml || true`
-!`test -f .opencodestate/architecture-contract.yaml && echo "CONTRACT:" && cat .opencodestate/architecture-contract.yaml || true`
-!`test -f .opencodestate/implementation-summary.yaml && echo "SUMMARY:" && cat .opencodestate/implementation-summary.yaml || true`
+!`test -f .phenix-agent-state/request.md && echo "REQUEST:" && cat .phenix-agent-state/request.md || true`
+!`test -f .phenix-agent-state/implementation-plan.yaml && echo "PLAN:" && cat .phenix-agent-state/implementation-plan.yaml || true`
+!`test -f .phenix-agent-state/planned-changes.yaml && echo "CHANGES:" && cat .phenix-agent-state/planned-changes.yaml || true`
+!`test -f .phenix-agent-state/architecture-contract.yaml && echo "CONTRACT:" && cat .phenix-agent-state/architecture-contract.yaml || true`
+!`test -f .phenix-agent-state/implementation-summary.yaml && echo "SUMMARY:" && cat .phenix-agent-state/implementation-summary.yaml || true`
 
 Relevant rules:
 

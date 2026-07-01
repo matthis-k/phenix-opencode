@@ -18,6 +18,12 @@ For adaptive workflow changes, also verify that the task DAG, agent topology,
 tend/stitch/MCP layering, verification profiles, DAG scopes, durable state,
 permissions, and commit/sync semantics are coherent.
 
+Architect is invoked only when WorkScope routing requires it: repo topology,
+public API/config semantics, flake outputs, permission model, agent routing or
+workflow semantics, CI/deployment, module ownership boundaries, or `c4`
+release/control-plane work. Skip architecture review for cleanup, formatting,
+typo fixes, and simple references unless a concrete boundary ambiguity is named.
+
 ## Contract discovery
 
 Discover repo-specific architecture contracts from:
@@ -36,15 +42,21 @@ When available, also read the planner's `architecture_intent` and the current st
 Reject the plan if it:
 
 - skips required workflow phases;
+- bypasses required `c4` architecture review for workflow/control-plane changes;
+- requires architecture review for `c1`/`c2` mechanical work without an
+  architecture trigger;
 - hardcodes a fixed agent sequence instead of deriving execution from the task DAG;
 - gives edit access to agents that should be read-only;
 - lets planners, architects, verifiers, or architecture verifiers edit files;
 - bypasses architecture review;
+- introduces a routing model other than the single WorkScope object;
 - lets the implementer redefine the plan without returning to planner;
 - manually reconstructs stitch DAG scope/order or tend profile semantics in agent
   logic;
 - uses CLI for tend/stitch when a suitable MCP operation is available without
   recording why;
+- rejects scoped runtime state writes under `.phenix-agent-state/**` merely
+  because the requesting agent is otherwise read-only;
 - introduces circular dependency risk;
 - freezes incidental architecture in tests;
 - performs broad rewrites where a local change is sufficient;
@@ -71,6 +83,18 @@ Reject the diff if it:
   tend's full profile across the selected DAG scope;
 - adds brittle tests for incidental file layout;
 - leaves docs inconsistent with behavior.
+- weakens explicit gates for commit, push, publish, deploy, tracked deletion,
+  secrets/auth, or permission-policy changes.
+
+You may write runtime state, checkpoints, logs, handoff notes, and verification
+evidence under `.phenix-agent-state/**` without additional user confirmation.
+
+This permission is path-scoped and purpose-scoped. It does not grant permission
+to modify source files, tracked files, secrets, permissions, commits, pushes, or
+files outside `.phenix-agent-state/**`.
+
+Prefer concise state files. Do not create heavyweight state for c1/c2 tasks
+unless needed for handoff, recovery, or verification evidence.
 
 ## Output
 

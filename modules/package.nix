@@ -88,6 +88,40 @@
         "nix key*" = "ask";
       };
 
+      agentStateWriteBashPermissions = {
+        "mkdir .phenix-agent-state*" = "allow";
+        "mkdir -p .phenix-agent-state*" = "allow";
+        "cat > .phenix-agent-state/*" = "allow";
+        "tee .phenix-agent-state/*" = "allow";
+        "tee -a .phenix-agent-state/*" = "allow";
+        "printf * > .phenix-agent-state/*" = "allow";
+        "printf * >> .phenix-agent-state/*" = "allow";
+        "python -c *.phenix-agent-state/*" = "allow";
+        "python3 -c *.phenix-agent-state/*" = "allow";
+        "chmod * .phenix-agent-state/*" = "deny";
+        "cat > .phenix-agent-state/*..*" = "deny";
+        "cat > .phenix-agent-state/*.env*" = "deny";
+        "cat > .phenix-agent-state/*secrets*" = "deny";
+        "tee .phenix-agent-state/*..*" = "deny";
+        "tee .phenix-agent-state/*.env*" = "deny";
+        "tee .phenix-agent-state/*secrets*" = "deny";
+        "tee -a .phenix-agent-state/*..*" = "deny";
+        "tee -a .phenix-agent-state/*.env*" = "deny";
+        "tee -a .phenix-agent-state/*secrets*" = "deny";
+        "printf * > .phenix-agent-state/*..*" = "deny";
+        "printf * > .phenix-agent-state/*.env*" = "deny";
+        "printf * > .phenix-agent-state/*secrets*" = "deny";
+        "printf * >> .phenix-agent-state/*..*" = "deny";
+        "printf * >> .phenix-agent-state/*.env*" = "deny";
+        "printf * >> .phenix-agent-state/*secrets*" = "deny";
+        "python -c *.phenix-agent-state/*..*" = "deny";
+        "python -c *.phenix-agent-state/*.env*" = "deny";
+        "python -c *.phenix-agent-state/*secrets*" = "deny";
+        "python3 -c *.phenix-agent-state/*..*" = "deny";
+        "python3 -c *.phenix-agent-state/*.env*" = "deny";
+        "python3 -c *.phenix-agent-state/*secrets*" = "deny";
+      };
+
       readOnlyAgentPermissions = {
         read = "allow";
         glob = "allow";
@@ -98,6 +132,7 @@
         bash =
           safeInspectionBashPermissions
           // destructiveNixSafeguards
+          // agentStateWriteBashPermissions
           // {
             "*" = "ask";
             "rg *" = "allow";
@@ -125,6 +160,7 @@
           // reversibleSingleRepoGitPermissions
           // destructiveGitSafeguards
           // destructiveNixSafeguards
+          // agentStateWriteBashPermissions
           // {
             "*" = "ask";
             "tend *" = "allow";
@@ -227,13 +263,11 @@
               bash =
                 safeInspectionBashPermissions
                 // destructiveNixSafeguards
+                // agentStateWriteBashPermissions
                 // {
                   "*" = "ask";
                   "rg *" = "allow";
                   "find *" = "allow";
-                  "mkdir -p .opencodestate*" = "allow";
-                  "tee .opencodestate/*" = "allow";
-                  "rm -f .opencodestate/*" = "allow";
                   "tend *" = "allow";
                   "stitch status*" = "allow";
                   "stitch exec*" = "allow";
@@ -485,6 +519,18 @@
             jq -e '.agent."phenix-workflow".permission."stitch-mcp_*" == "allow"' ${generatedConfig}
             jq -e '.agent."phenix-workflow".permission.bash."tend *" == "allow"' ${generatedConfig}
             jq -e '.agent."phenix-workflow".permission.bash."stitch exec*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."mkdir -p .phenix-agent-state*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."cat > .phenix-agent-state/*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."tee -a .phenix-agent-state/*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."python -c *.phenix-agent-state/*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."chmod * .phenix-agent-state/*" == "deny"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."tee -a .phenix-agent-state/*secrets*" == "deny"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."tee -a .phenix-agent-state/*.env*" == "deny"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."tee -a .phenix-agent-state/*..*" == "deny"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash."python -c *.phenix-agent-state/*secrets*" == "deny"' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash | has("mkdir -p .opencodestate*") | not' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash | has("rm -f .phenix-agent-state/*") | not' ${generatedConfig}
+            jq -e '.agent."phenix-workflow".permission.bash | has("python -c *flake.nix*") | not' ${generatedConfig}
 
             jq -e '.agent."phenix-planner".mode == "subagent"' ${generatedConfig}
             jq -e '.agent."phenix-architect".mode == "subagent"' ${generatedConfig}
@@ -520,6 +566,10 @@
             jq -e '.agent."phenix-worker".permission.bash."nix store ls*" == "allow"' ${generatedConfig}
             jq -e '.agent."phenix-worker".permission.bash."nix flake update*" == "ask"' ${generatedConfig}
             jq -e '.agent."phenix-worker".permission.bash."nix store delete*" == "ask"' ${generatedConfig}
+            jq -e '.agent."phenix-worker".permission.bash."mkdir -p .phenix-agent-state*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-worker".permission.bash."python -c *.phenix-agent-state/*" == "allow"' ${generatedConfig}
+            jq -e '.agent."phenix-worker".permission.bash."chmod * .phenix-agent-state/*" == "deny"' ${generatedConfig}
+            jq -e '.agent."phenix-planner".permission.bash."mkdir -p .phenix-agent-state*" == "allow"' ${generatedConfig}
             jq -e '.agent."phenix-planner".permission.edit == "deny"' ${generatedConfig}
             jq -e '.agent."phenix-architect".permission.edit == "deny"' ${generatedConfig}
             jq -e '.agent."phenix-verifier".permission.edit == "deny"' ${generatedConfig}

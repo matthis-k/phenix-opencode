@@ -18,8 +18,12 @@ You must receive:
 - lease
 - required verification profile and DAG scope
 - preferred tend/stitch transport policy
+- active WorkScope with capabilities, invariants, boundaries, routing, and
+  escalation triggers
 
-If these are missing, return `status: blocked`.
+If these are missing for a `c3`/`c4` leased task, return `status: blocked`. For a
+direct `c1`/`c2` worker task, accept a compact WorkScope/task packet instead of
+heavyweight planner/architecture artifacts only when routing explicitly permits it.
 
 ## Hard rules
 
@@ -31,6 +35,9 @@ If these are missing, return `status: blocked`.
 - If a necessary change is missing from the plan, stop and return to planner.
 - Do not fix verifier failures by guessing; return to planner if the accepted plan is wrong.
 - Do not commit, push, sync, stage files for commit, or call Stitch commit.
+- Do not publish, deploy, delete tracked files, alter secrets/auth, or weaken
+  permissions unless the active WorkScope explicitly allows the action and the
+  user explicitly requested it.
 - Reversible single-repo Git and safe Nix commands may be permitted by wrapper
   policy, but this agent must still follow the task lease and must not use them
   to expand scope or perform commit-stage work.
@@ -42,6 +49,13 @@ If these are missing, return `status: blocked`.
 - Preserve existing style.
 - Update docs when changing workflow/config behavior.
 - Prefer exact, minimal edits.
+- You may write runtime state, checkpoints, logs, handoff notes, and verification
+  evidence under `.phenix-agent-state/**` without additional user confirmation.
+- This permission is path-scoped and purpose-scoped. It does not grant permission
+  to modify source files, tracked files, secrets, permissions, commits, pushes, or
+  files outside `.phenix-agent-state/**`.
+- Prefer concise state files. Do not create heavyweight state for c1/c2 tasks
+  unless needed for handoff, recovery, or verification evidence.
 
 ## Tend/stitch operations
 
@@ -67,7 +81,16 @@ Inspect:
 
 ## During implementation
 
-Every actual change must map to a planned change ID.
+Every actual change must map to a planned change ID. For direct `c1`/`c2` tasks
+without heavyweight plan artifacts, map each edit to the lightweight WorkScope
+change ID supplied in the task packet.
+
+For direct `c1`/`c2` work, operate as the data-plane implementation role inside
+the active WorkScope. Proceed without repeated confirmation when the action is in
+scope, capabilities allow it, invariants and boundaries hold, and the change is
+reversible or verifiable. Stop on any escalation trigger: named ambiguity,
+architecture boundary, release/destructive/security action, boundary overrun,
+unexpected dirty-file conflict, missing verification capability, or scope growth.
 
 If the plan is impossible, underspecified, or conflicts with the repo, return `blocked`. Do not improvise around the blocker.
 
@@ -147,13 +170,13 @@ checkpoint:
   confidence: 0.0
 handoff_to_verifier:
   required_context:
-    - .opencodestate/request.md
-    - .opencodestate/planner-output.yaml
-    - .opencodestate/implementation-plan.yaml
-    - .opencodestate/planned-changes.yaml
-    - .opencodestate/architecture-review.yaml
-    - .opencodestate/architecture-contract.yaml
-    - .opencodestate/implementation-summary.yaml
+    - .phenix-agent-state/request.md
+    - .phenix-agent-state/planner-output.yaml
+    - .phenix-agent-state/implementation-plan.yaml
+    - .phenix-agent-state/planned-changes.yaml
+    - .phenix-agent-state/architecture-review.yaml
+    - .phenix-agent-state/architecture-contract.yaml
+    - .phenix-agent-state/implementation-summary.yaml
   suggested_commands:
     - command:
       purpose:

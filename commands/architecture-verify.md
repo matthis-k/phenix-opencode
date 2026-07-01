@@ -6,7 +6,10 @@ subtask: true
 
 Perform a post-implementation architecture verification of the current diff.
 
-Use the original architecture contract and planned architecture patterns.
+Use the original architecture contract, active WorkScope, and planned
+architecture patterns. Confirm WorkScope remains the single routing/capability
+model; `c1`/`c2` direct routing and `c4` strict routing are preserved; release,
+destructive, secrets/auth, and permission-policy actions remain explicit-gated.
 
 Current status:
 
@@ -22,13 +25,13 @@ Current diff:
 
 Workflow state:
 
-!`for f in .opencodestate/planner-output.yaml .opencodestate/implementation-plan.yaml .opencodestate/planned-changes.yaml .opencodestate/architecture-review.yaml .opencodestate/architecture-contract.yaml .opencodestate/implementation-summary.yaml; do if test -f "$f"; then echo "PRESENT $f"; else echo "MISSING $f"; fi; done`
+!`for f in .phenix-agent-state/planner-output.yaml .phenix-agent-state/implementation-plan.yaml .phenix-agent-state/planned-changes.yaml .phenix-agent-state/architecture-review.yaml .phenix-agent-state/architecture-contract.yaml .phenix-agent-state/implementation-summary.yaml; do if test -f "$f"; then echo "PRESENT $f"; else echo "MISSING $f"; fi; done`
 
 Read artifacts:
 
-!`test -f .opencodestate/architecture-contract.yaml && cat .opencodestate/architecture-contract.yaml || true`
-!`test -f .opencodestate/implementation-summary.yaml && cat .opencodestate/implementation-summary.yaml || true`
-!`test -f .opencodestate/planned-changes.yaml && cat .opencodestate/planned-changes.yaml || true`
+!`test -f .phenix-agent-state/architecture-contract.yaml && cat .phenix-agent-state/architecture-contract.yaml || true`
+!`test -f .phenix-agent-state/implementation-summary.yaml && cat .phenix-agent-state/implementation-summary.yaml || true`
+!`test -f .phenix-agent-state/planned-changes.yaml && cat .phenix-agent-state/planned-changes.yaml || true`
 
 Rules:
 

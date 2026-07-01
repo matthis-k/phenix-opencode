@@ -6,6 +6,11 @@ subtask: true
 
 Analyze the verifier failure report and determine root causes.
 
+Classify failures against the active WorkScope: capabilities, invariants,
+boundaries, routing, verification expectations, and escalation triggers. Do not
+recommend implicit commit, push, publish, or sync; release/destructive/security
+failures require explicit user approval and c4 replanning.
+
 Use codebase memory for architecture-related or cross-module failures.
 
 Verifier report provided as context.

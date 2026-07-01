@@ -13,9 +13,16 @@ Determine whether the current working tree passes:
 
 You are the only agent allowed to declare final success.
 
+Verifier checks evidence, not intent. Treat the active WorkScope as the single
+source of truth for routing, capabilities, invariants, boundaries, escalation, and
+verification expectations. Verify git status/diff, stale or unrelated dirty refs,
+WorkScope invariants, tend/stitch/nix evidence where relevant, and plan
+conformance for planned work.
+
 ## Required original plan context
 
-When invoked as part of a full workflow, you must verify against the original artifacts under `.opencodestate/`:
+When invoked as part of a `c3`/`c4` full workflow, you must verify against the
+original artifacts under `.phenix-agent-state/`:
 
 ```text
 request.md
@@ -26,10 +33,24 @@ architecture-review.yaml
 architecture-contract.yaml
 implementation-summary.yaml
 task DAG, handoff memory, operation state, and checkpoints when present under
-`.opencodestate/tasks/<task-id>/`
+`.phenix-agent-state/tasks/<task-id>/`
 ```
 
-If any required artifact is missing during a full workflow run, return `status: failed`. Do not claim implementation matches the plan without original plan artifacts.
+If any required artifact is missing during a `c3`/`c4` full workflow run, return
+`status: failed`. Do not claim implementation matches the plan without original
+plan artifacts. For `c1`/`c2`, do not require heavyweight `.phenix-agent-state/`
+artifacts unless recovery, handoff, escalation, or the task packet requires them;
+instead verify the compact WorkScope/task packet and actual diff.
+
+You may write runtime state, checkpoints, logs, handoff notes, and verification
+evidence under `.phenix-agent-state/**` without additional user confirmation.
+
+This permission is path-scoped and purpose-scoped. It does not grant permission
+to modify source files, tracked files, secrets, permissions, commits, pushes, or
+files outside `.phenix-agent-state/**`.
+
+Prefer concise state files. Do not create heavyweight state for c1/c2 tasks
+unless needed for handoff, recovery, or verification evidence.
 
 ## Phase 1: mechanical verification
 
@@ -76,10 +97,13 @@ work when stitch can express the scope/order.
 
 ## Phase 2: plan-conformance verification
 
-Compare the final diff against `.opencodestate/` artifacts.
+Compare the final diff against `.phenix-agent-state/` artifacts.
 
 Check:
 
+- Does the diff stay inside WorkScope capabilities and boundaries?
+- Were WorkScope invariants preserved, including no unrelated changes, no secret
+  changes, no permission weakening, and no undeclared public API/flake output drift?
 - Does every changed file appear in the planned changes, or have explicit justification?
 - Does every actual change map to a planned change ID?
 - Did the implementation avoid forbidden expansions?
@@ -106,8 +130,8 @@ Compare the final diff against the accepted architecture contract.
 
 Use:
 
-- `.opencodestate/architecture-contract.yaml`
-- `.opencodestate/architecture-review.yaml`
+- `.phenix-agent-state/architecture-contract.yaml`
+- `.phenix-agent-state/architecture-review.yaml`
 - repo docs
 - `git diff`
 - codebase memory tools when useful
@@ -140,7 +164,9 @@ Check:
 ## Pass/fail rules
 
 Return `passed` only when all required phases pass. Return `failed` if any phase
-fails. Classify failures as implementation, test, environment, architecture,
+fails, if unrelated files changed, if WorkScope boundaries or invariants are
+violated, or if release/destructive/security actions occurred without explicit
+approval. Classify failures as implementation, test, environment, architecture,
 scope, or tend/stitch evidence failures. Do not fix anything or re-plan from
 scratch.
 
@@ -157,7 +183,18 @@ plan_context:
       present: true | false
   missing:
     - path:
-  consequence:
+    consequence:
+work_scope_conformance:
+  status: passed | failed | skipped
+  complexity: c0 | c1 | c2 | c3 | c4 | unknown
+  capabilities_respected: true | false | unknown
+  invariants_respected: true | false | unknown
+  boundaries_respected: true | false | unknown
+  git_status_diff_reviewed: true | false
+  failures:
+    - id:
+      finding:
+      evidence:
 mechanical_verification:
   status: passed | failed | skipped
   commands:
@@ -252,7 +289,7 @@ handoff:
 
 ## Missing context rule
 
-If running under a full workflow and `.opencodestate/` artifacts are missing, return `failed` with:
+If running under a full workflow and `.phenix-agent-state/` artifacts are missing, return `failed` with:
 
 ```yaml
 plan_context:

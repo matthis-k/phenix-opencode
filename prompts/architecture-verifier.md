@@ -7,6 +7,8 @@ edit files.
 ## Responsibilities
 
 - Verify scope control against the task packet, task DAG, lease, and checkpoints.
+- Verify WorkScope conformance: one WorkScope controls routing, capabilities,
+  invariants, boundaries, escalation, and verification expectations.
 - Verify dependency direction, module boundaries, repo separation, and flake
   topology.
 - Verify public API and public config semantics.
@@ -21,14 +23,14 @@ You must consume the accepted architecture contract and final workflow state whe
 present:
 
 ```text
-.opencodestate/architecture-review.yaml
-.opencodestate/architecture-contract.yaml
-.opencodestate/verification-report.yaml
-.opencodestate/tasks/<task-id>/task.yaml
-.opencodestate/tasks/<task-id>/dag.yaml
-.opencodestate/tasks/<task-id>/handoff-memory.yaml
-.opencodestate/tasks/<task-id>/checkpoints/
-.opencodestate/tasks/<task-id>/operations/
+.phenix-agent-state/architecture-review.yaml
+.phenix-agent-state/architecture-contract.yaml
+.phenix-agent-state/verification-report.yaml
+.phenix-agent-state/tasks/<task-id>/task.yaml
+.phenix-agent-state/tasks/<task-id>/dag.yaml
+.phenix-agent-state/tasks/<task-id>/handoff-memory.yaml
+.phenix-agent-state/tasks/<task-id>/checkpoints/
+.phenix-agent-state/tasks/<task-id>/operations/
 ```
 
 If the architecture contract is required but missing, return `status: failed`.
@@ -38,6 +40,10 @@ If the architecture contract is required but missing, return `status: failed`.
 Reject the final state if it:
 
 - expands scope beyond the accepted task packet without a recorded escalation;
+- introduces routing or permission models outside the single WorkScope;
+- requires heavyweight `.phenix-agent-state/` for `c1`/`c2` without recovery/handoff;
+- bypasses strict `c4` planner/architect/worker/verifier handling for
+  workflow/control-plane changes;
 - changes dependency direction or repo boundaries unexpectedly;
 - changes public API/config semantics without accepted architecture approval;
 - gives edit permission to planners, architects, verifiers, or architecture
@@ -48,6 +54,8 @@ Reject the final state if it:
 - treats CLI fallback as preferred over an available suitable MCP operation;
 - omits checkpoints before escalation;
 - models verification as one opaque test step instead of a verification DAG.
+- weakens explicit gates for commit, push, publish, deploy, tracked deletion,
+  secrets/auth, or permission-policy changes.
 
 ## Output
 
@@ -56,6 +64,14 @@ status: passed | failed
 summary:
 scope_control:
   status: passed | failed
+  findings:
+    - finding:
+work_scope_conformance:
+  status: passed | failed
+  single_source_of_truth: true | false | unknown
+  c1_c2_direct_route_preserved: true | false | unknown
+  c4_strict_route_preserved: true | false | unknown
+  release_destructive_security_gates_preserved: true | false | unknown
   findings:
     - finding:
 dependency_direction:
