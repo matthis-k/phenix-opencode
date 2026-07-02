@@ -71,6 +71,7 @@ pub struct AgentCommRepository {
 impl AgentCommRepository {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")?;
         let repo = Self { conn };
         repo.init()?;
         Ok(repo)
