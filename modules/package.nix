@@ -242,8 +242,12 @@
           };
           github = {
             type = "local";
-            command = [ "${github-mcp-server}/bin/github-mcp-server" ];
+            command = [
+              "${github-mcp-server}/bin/github-mcp-server"
+              "stdio"
+            ];
             enabled = true;
+            environment.GITHUB_PERSONAL_ACCESS_TOKEN = "{env:GITHUB_PERSONAL_ACCESS_TOKEN}";
           };
         };
 
@@ -454,6 +458,27 @@
         ];
       };
 
+      opencodeWithGithubToken = pkgs.writeShellApplication {
+        name = "opencode";
+        runtimeInputs = [ pkgs.coreutils ];
+        text = ''
+          if [ -z "''${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ] && [ -r /run/secrets/github_token ]; then
+            token="$(< /run/secrets/github_token)"
+            while [[ "$token" == [[:space:]]* ]]; do
+              token="''${token:1}"
+            done
+            while [[ "$token" == *[[:space:]] ]]; do
+              token="''${token:0:''${#token}-1}"
+            done
+            export GH_TOKEN="$token"
+            export GITHUB_TOKEN="$token"
+            export GITHUB_PERSONAL_ACCESS_TOKEN="$token"
+          fi
+
+          exec ${wrappedOpencode}/bin/opencode "$@"
+        '';
+      };
+
       wrappedPi = pkgs.writeShellApplication {
         name = "pi";
         runtimeInputs = [
@@ -488,8 +513,8 @@
     in
     {
       packages = {
-        default = wrappedOpencode;
-        opencode = wrappedOpencode;
+        default = opencodeWithGithubToken;
+        opencode = opencodeWithGithubToken;
         pi = wrappedPi;
         workflow-state = workflowState;
         generated-config = generatedConfig;
@@ -522,8 +547,8 @@
 
               jq -e '.mcp.github.type == "local"' ${generatedConfig}
               jq -e '.mcp.github.enabled == true' ${generatedConfig}
-              jq -e '.mcp.github.command | type == "array" and length == 1 and (.[0] | test("/bin/github-mcp-server$"))' ${generatedConfig}
-              jq -e '.mcp.github | has("environment") | not' ${generatedConfig}
+              jq -e '.mcp.github.command | type == "array" and length == 2 and (.[0] | test("/bin/github-mcp-server$")) and .[1] == "stdio"' ${generatedConfig}
+              jq -e '.mcp.github.environment.GITHUB_PERSONAL_ACCESS_TOKEN == "{env:GITHUB_PERSONAL_ACCESS_TOKEN}"' ${generatedConfig}
 
               jq -e '.agent."phenix-workflow".mode == "primary"' ${generatedConfig}
               jq -e '.agent."phenix-workflow".permission.edit == "deny"' ${generatedConfig}
