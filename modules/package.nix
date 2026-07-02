@@ -5,6 +5,8 @@
       inherit (inputs) nix-wrapper-modules;
       codebase-memory-mcp = inputs.nixpkgs-unstable.legacyPackages.${system}.codebase-memory-mcp;
       inherit (pkgs) github-mcp-server;
+      mcp-nixos = inputs.nixpkgs-unstable.legacyPackages.${system}.mcp-nixos;
+      context7-mcp = inputs.nixpkgs-unstable.legacyPackages.${system}.context7-mcp;
 
       promptsDir = ../prompts;
       commandsDir = ../commands;
@@ -227,6 +229,18 @@
             ];
             enabled = true;
             environment.GITHUB_PERSONAL_ACCESS_TOKEN = "{env:GITHUB_PERSONAL_ACCESS_TOKEN}";
+          };
+          mcp-nixos = {
+            type = "local";
+            command = [ "${mcp-nixos}/bin/mcp-nixos" ];
+            enabled = true;
+            timeout = 30000;
+          };
+          context7-mcp = {
+            type = "local";
+            command = [ "${context7-mcp}/bin/context7-mcp" ];
+            enabled = true;
+            timeout = 30000;
           };
         };
 
