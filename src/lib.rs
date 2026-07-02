@@ -462,11 +462,14 @@ pub fn handle_json_rpc(repo: &AgentCommRepository, request: Value) -> Value {
     let params = request.get("params").cloned().unwrap_or_else(|| json!({}));
     let is_notification = method.starts_with("notifications/");
     let result: std::result::Result<Value, String> = match method {
-        "initialize" => Ok(json!({
-            "protocolVersion": "2024-11-05",
-            "serverInfo": {"name": "phenix-agent-comm-mcp", "version": env!("CARGO_PKG_VERSION")},
-            "capabilities": {"tools": {}}
-        })),
+        "initialize" => {
+            let client_version = params.get("protocolVersion").and_then(Value::as_str).unwrap_or("2025-06-18");
+            Ok(json!({
+                "protocolVersion": client_version,
+                "serverInfo": {"name": "phenix-agent-comm-mcp", "version": env!("CARGO_PKG_VERSION")},
+                "capabilities": {"tools": {}}
+            }))
+        }
         "ping" => Ok(json!({})),
         "tools/list" => Ok(json!({"tools": tool_descriptions()})),
         "tools/call" => {
@@ -608,7 +611,7 @@ mod tests {
         assert_eq!(resp["jsonrpc"], "2.0");
         assert_eq!(resp["id"], 1);
         assert_eq!(resp["result"]["serverInfo"]["name"], "phenix-agent-comm-mcp");
-        assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
+        assert_eq!(resp["result"]["protocolVersion"], "2025-06-18");
         assert!(resp["result"]["capabilities"]["tools"].is_object());
 
         // notifications/initialized → should return Value::Null (suppressed)

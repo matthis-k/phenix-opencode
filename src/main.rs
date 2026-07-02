@@ -55,31 +55,21 @@ fn run_mcp(repo: &AgentCommRepository) -> Result<()> {
 }
 
 fn read_message(input: &mut impl BufRead) -> Result<Option<Value>> {
-    let mut content_length = None;
-    loop {
-        let mut line = String::new();
-        let read = input.read_line(&mut line)?;
-        if read == 0 {
-            return Ok(None);
-        }
-        let trimmed = line.trim_end_matches(['\r', '\n']);
-        if trimmed.is_empty() {
-            break;
-        }
-        if let Some(value) = trimmed.strip_prefix("Content-Length:") {
-            content_length = Some(value.trim().parse::<usize>()?);
-        }
+    let mut line = String::new();
+    let read = input.read_line(&mut line)?;
+    if read == 0 {
+        return Ok(None);
     }
-    let len = content_length.context("missing Content-Length header")?;
-    let mut body = vec![0_u8; len];
-    input.read_exact(&mut body)?;
-    Ok(Some(serde_json::from_slice(&body)?))
+    let trimmed = line.trim_end_matches(['\r', '\n']);
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::from_str(trimmed)?))
 }
 
 fn write_message(output: &mut impl Write, value: &Value) -> Result<()> {
-    let body = serde_json::to_vec(value)?;
-    write!(output, "Content-Length: {}\r\n\r\n", body.len())?;
-    output.write_all(&body)?;
+    serde_json::to_writer(&mut *output, value)?;
+    output.write_all(b"\n")?;
     output.flush()?;
     Ok(())
 }
