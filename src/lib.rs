@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, types::ValueRef, Connection, OptionalExtension};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::path::Path;
@@ -435,11 +435,20 @@ impl AgentCommRepository {
         let rows = stmt.query_map(params, |row| {
             let mut obj = serde_json::Map::new();
             for (idx, name) in names.iter().enumerate() {
-                let cell: Option<String> = row.get(idx)?;
+                let cell = row.get_ref(idx)?;
                 let value = match cell {
-                    Some(s) if name == "metadata" || name == "payload" => serde_json::from_str(&s).unwrap_or(Value::String(s)),
-                    Some(s) => Value::String(s),
-                    None => Value::Null,
+                    ValueRef::Null => Value::Null,
+                    ValueRef::Integer(i) => Value::Number(i.into()),
+                    ValueRef::Real(f) => serde_json::Number::from_f64(f).map(Value::Number).unwrap_or(Value::Null),
+                    ValueRef::Text(s) => {
+                        let s = std::str::from_utf8(s).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                        if name == "metadata" || name == "payload" {
+                            serde_json::from_str(s).unwrap_or(Value::String(s.to_owned()))
+                        } else {
+                            Value::String(s.to_owned())
+                        }
+                    }
+                    ValueRef::Blob(b) => Value::String(format!("<blob: {} bytes>", b.len())),
                 };
                 obj.insert(name.clone(), value);
             }
@@ -508,11 +517,158 @@ fn uuid() -> String { Uuid::now_v7().to_string() }
 fn now() -> String { OffsetDateTime::now_utc().format(&time::format_description::well_known::Rfc3339).expect("rfc3339") }
 
 pub fn tool_descriptions() -> Value {
-    Value::Array(TOOLS.iter().map(|name| json!({
-        "name": name,
-        "description": format!("Agent communication tool {name}"),
-        "inputSchema": {"type":"object", "additionalProperties": true}
-    })).collect())
+    let tools: Vec<Value> = TOOLS.iter().map(|name| {
+        let (description, schema) = tool_meta(name);
+        json!({
+            "name": name,
+            "description": description,
+            "inputSchema": schema,
+        })
+    }).collect();
+    Value::Array(tools)
+}
+
+fn tool_meta(name: &str) -> (&'static str, Value) {
+    // Each entry: (description, inputSchema)
+    match name {
+        "comm_session_init" => (
+            "Create a new communication session",
+            json!({"type":"object","properties":{"name":{"type":"string","description":"Session name"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["name"]})
+        ),
+        "comm_session_resume" => (
+            "Resume or get an existing session by ID",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"}},"required":["session_id"]})
+        ),
+        "comm_session_get" => (
+            "Get session details by ID",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"}},"required":["session_id"]})
+        ),
+        "comm_session_list" => (
+            "List all sessions (most recent first, max 200)",
+            json!({"type":"object","properties":{}})
+        ),
+        "comm_session_close" => (
+            "Close a session",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"}},"required":["session_id"]})
+        ),
+        "comm_agent_register" => (
+            "Register an agent in a session",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"name":{"type":"string","description":"Agent name"},"kind":{"type":"string","description":"Agent kind e.g. phenix-worker"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["session_id","name"]})
+        ),
+        "comm_agent_heartbeat" => (
+            "Update agent heartbeat timestamp",
+            json!({"type":"object","properties":{"agent_id":{"type":"string","description":"Agent ID"}},"required":["agent_id"]})
+        ),
+        "comm_agent_update_status" => (
+            "Update agent status (available/busy/waiting/offline)",
+            json!({"type":"object","properties":{"agent_id":{"type":"string","description":"Agent ID"},"status":{"type":"string","description":"New status: available, busy, waiting, offline","enum":["available","busy","waiting","offline"]},"metadata":{"type":"object","description":"Optional metadata"}},"required":["agent_id","status"]})
+        ),
+        "comm_agent_list" => (
+            "List agents in a session",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"}},"required":["session_id"]})
+        ),
+        "comm_message_send" => (
+            "Send a message to agents (by ID, IDs list, or kind)",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"from_agent_id":{"type":"string","description":"Sender agent ID (optional)"},"to_agent_id":{"type":"string","description":"Single recipient agent ID"},"to_agent_ids":{"type":"array","items":{"type":"string"},"description":"Multiple recipient agent IDs"},"to_kind":{"type":"string","description":"Route to all agents of this kind e.g. phenix-worker"},"task_id":{"type":"string","description":"Associated task ID"},"format":{"type":"string","description":"Message format: text, markdown, json, yaml","default":"markdown"},"severity":{"type":"string","description":"Severity: info, notice, warning, error","default":"info"},"subject":{"type":"string","description":"Message subject"},"body":{"type":"string","description":"Message body"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["session_id","body"]})
+        ),
+        "comm_message_list" => (
+            "List messages in a session, optionally filtered by agent or task",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"agent_id":{"type":"string","description":"Filter by recipient agent ID"},"task_id":{"type":"string","description":"Filter by task ID"}},"required":["session_id"]})
+        ),
+        "comm_message_read" => (
+            "Mark a message as read by an agent",
+            json!({"type":"object","properties":{"message_id":{"type":"string","description":"Message ID"},"agent_id":{"type":"string","description":"Reading agent ID"}},"required":["message_id","agent_id"]})
+        ),
+        "comm_message_ack" => (
+            "Mark a message as acknowledged by an agent",
+            json!({"type":"object","properties":{"message_id":{"type":"string","description":"Message ID"},"agent_id":{"type":"string","description":"Acknowledging agent ID"}},"required":["message_id","agent_id"]})
+        ),
+        "comm_message_reply" => (
+            "Reply to an existing message, creating a threaded conversation",
+            json!({"type":"object","properties":{"message_id":{"type":"string","description":"Parent message ID to reply to"},"from_agent_id":{"type":"string","description":"Reply sender agent ID"},"body":{"type":"string","description":"Reply body"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["message_id","body"]})
+        ),
+        "comm_graph_create" => (
+            "Create a new task graph within a session",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"name":{"type":"string","description":"Graph name"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["session_id","name"]})
+        ),
+        "comm_graph_get" => (
+            "Get graph details by ID",
+            json!({"type":"object","properties":{"graph_id":{"type":"string","description":"Graph ID"}},"required":["graph_id"]})
+        ),
+        "comm_graph_summary" => (
+            "Get graph summary with task status counts and dependency count",
+            json!({"type":"object","properties":{"graph_id":{"type":"string","description":"Graph ID"}},"required":["graph_id"]})
+        ),
+        "comm_task_create" => (
+            "Create a new task in a graph",
+            json!({"type":"object","properties":{"graph_id":{"type":"string","description":"Graph ID"},"parent_id":{"type":"string","description":"Optional parent task ID"},"title":{"type":"string","description":"Task title"},"description":{"type":"string","description":"Task description"},"assigned_agent_id":{"type":"string","description":"Optional assigned agent ID"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["graph_id","title"]})
+        ),
+        "comm_task_update" => (
+            "Update task fields (title, description, status, assigned_agent_id, metadata)",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Task ID"},"title":{"type":"string","description":"New title"},"description":{"type":"string","description":"New description"},"status":{"type":"string","description":"New status: pending, in_progress, blocked, completed, failed","enum":["pending","in_progress","blocked","completed","failed"]},"assigned_agent_id":{"type":"string","description":"New assigned agent ID"},"metadata":{"type":"object","description":"New metadata"}},"required":["task_id"]})
+        ),
+        "comm_task_add_dependency" => (
+            "Add a dependency between two tasks (task depends_on depends_on_task_id)",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Dependent task ID (depends on the other)"},"depends_on_task_id":{"type":"string","description":"Prerequisite task ID"},"title":{"type":"string","description":"Required: title for context"}},"required":["task_id","depends_on_task_id","title"]})
+        ),
+        "comm_task_add_child" => (
+            "Create a child task under a parent task",
+            json!({"type":"object","properties":{"graph_id":{"type":"string","description":"Graph ID"},"parent_id":{"type":"string","description":"Parent task ID"},"title":{"type":"string","description":"Child task title"},"description":{"type":"string","description":"Optional description"},"assigned_agent_id":{"type":"string","description":"Optional assigned agent ID"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["graph_id","parent_id","title"]})
+        ),
+        "comm_task_claim" => (
+            "Claim a task for an agent, setting status to in_progress",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Task ID"},"agent_id":{"type":"string","description":"Claiming agent ID"},"claim_expires_at":{"type":"string","description":"Optional claim expiry timestamp (RFC 3339)"}},"required":["task_id","agent_id"]})
+        ),
+        "comm_task_release" => (
+            "Release a claimed task back to pending",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Task ID"},"agent_id":{"type":"string","description":"Optional agent ID (only that agent can release if set)"}},"required":["task_id"]})
+        ),
+        "comm_task_complete" => (
+            "Mark a task as completed. Fails if dependencies are incomplete unless override_incomplete_dependencies is true.",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Task ID"},"override_incomplete_dependencies":{"type":"boolean","description":"Override incomplete dependency check"}},"required":["task_id"]})
+        ),
+        "comm_task_fail" => (
+            "Mark a task as failed",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Task ID"},"reason":{"type":"string","description":"Failure reason"}},"required":["task_id"]})
+        ),
+        "comm_task_block" => (
+            "Mark a task as blocked",
+            json!({"type":"object","properties":{"task_id":{"type":"string","description":"Task ID"},"reason":{"type":"string","description":"Block reason"}},"required":["task_id"]})
+        ),
+        "comm_task_list_ready" => (
+            "List tasks ready to claim (pending with all dependencies completed)",
+            json!({"type":"object","properties":{"graph_id":{"type":"string","description":"Graph ID"},"session_id":{"type":"string","description":"Required: session ID for context"}},"required":["graph_id"]})
+        ),
+        "comm_task_list_for_agent" => (
+            "List tasks assigned or claimed by an agent",
+            json!({"type":"object","properties":{"agent_id":{"type":"string","description":"Agent ID"}},"required":["agent_id"]})
+        ),
+        "comm_event_list" => (
+            "List events for a session, optionally filtered by task",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"task_id":{"type":"string","description":"Filter by task ID"},"limit":{"type":"integer","description":"Max events to return (default 100)"}},"required":["session_id"]})
+        ),
+        "comm_event_recent" => (
+            "List most recent events across all sessions",
+            json!({"type":"object","properties":{"limit":{"type":"integer","description":"Max events to return (default 25)"}}})
+        ),
+        "comm_artifact_record" => (
+            "Record an artifact (output, diff, log, etc.)",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"task_id":{"type":"string","description":"Optional associated task ID"},"agent_id":{"type":"string","description":"Optional associated agent ID"},"name":{"type":"string","description":"Artifact name"},"kind":{"type":"string","description":"Artifact kind (e.g. plan, diff, log, checkpoint)"},"uri":{"type":"string","description":"Optional URI reference"},"content_ref":{"type":"string","description":"Optional content reference"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["session_id","name","kind"]})
+        ),
+        "comm_artifact_list" => (
+            "List artifacts in a session",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"}},"required":["session_id"]})
+        ),
+        "comm_decision_record" => (
+            "Record a decision with rationale and outcome",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"},"task_id":{"type":"string","description":"Optional associated task ID"},"agent_id":{"type":"string","description":"Optional associated agent ID"},"title":{"type":"string","description":"Decision title"},"rationale":{"type":"string","description":"Rationale for the decision"},"outcome":{"type":"string","description":"Decision outcome (e.g. accepted, rejected, deferred)"},"metadata":{"type":"object","description":"Optional metadata"}},"required":["session_id","title","rationale","outcome"]})
+        ),
+        "comm_decision_list" => (
+            "List decisions in a session",
+            json!({"type":"object","properties":{"session_id":{"type":"string","description":"Session ID"}},"required":["session_id"]})
+        ),
+        _ => ("Agent communication tool", json!({"type":"object","properties":{}})),
+    }
 }
 
 #[cfg(test)]
